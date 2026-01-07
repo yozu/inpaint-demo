@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+
+# PyTorch models (large files)
+*.pt
+*.pth
+*.onnx
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads (user data)
+uploads/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# Cache
+.cache/
+__pycache__/

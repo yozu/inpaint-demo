@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>テクスチャ対応 Image Inpainting デモ</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 900px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .card h2 {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .canvas-container {
+            position: relative;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f9f9f9;
+            overflow: hidden;
+        }
+
+        .canvas-container.has-image {
+            border-style: solid;
+            border-color: #667eea;
+        }
+
+        #dropzone {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+
+        #dropzone.dragover {
+            background: #e8f0fe;
+            border-color: #667eea;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            display: none;
+        }
+
+        .canvas-wrapper.visible {
+            display: block;
+        }
+
+        #imageCanvas, #maskCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #maskCanvas {
+            cursor: crosshair;
+        }
+
+        .controls {
+            margin-top: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-group label {
+            font-size: 0.9rem;
+            color: #555;
+        }
+
+        input[type="range"] {
+            width: 100px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-danger {
+            background: #ff5252;
+            color: white;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .result-item {
+            text-align: center;
+        }
+
+        .result-item img {
+            max-width: 100%;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+
+        .result-item h3 {
+            font-size: 0.9rem;
+            margin-top: 8px;
+            color: #555;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.visible {
+            display: block;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .instructions {
+            background: #f8f9ff;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+            color: #555;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin: 5px 0;
+        }
+
+        .method-select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        .highlight {
+            background: #ffeb3b;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎨 テクスチャ対応 Image Inpainting</h1>
+            <p>背景パターンを維持しながら対象物を消去するデモ</p>
+        </header>
+
+        <div class="main-content">
+            <!-- 左側: 入力 -->
+            <div class="card">
+                <h2>📷 入力画像</h2>
+
+                <div class="instructions">
+                    <ol>
+                        <li>画像をドラッグ&ドロップまたはクリックで選択</li>
+                        <li><span class="highlight">赤いブラシ</span>で消したい部分を塗る</li>
+                        <li>「実行」ボタンをクリック</li>
+                    </ol>
+                    <div style="margin-top: 10px;">
+                        <button class="btn-primary" id="demoBtn">🚀 デモ実行（自動テスト）</button>
+                    </div>
+                </div>
+
+                <div class="canvas-container" id="canvasContainer">
+                    <div id="dropzone">
+                        <p style="font-size: 3rem; margin-bottom: 10px;">📁</p>
+                        <p>画像をドラッグ&ドロップ</p>
+                        <p style="margin: 10px 0;">または</p>
+                        <button class="btn-secondary" onclick="document.getElementById('fileInput').click()">
+                            ファイルを選択
+                        </button>
+                        <input type="file" id="fileInput" accept="image/*">
+                    </div>
+                    <div class="canvas-wrapper" id="canvasWrapper">
+                        <canvas id="imageCanvas"></canvas>
+                        <canvas id="maskCanvas"></canvas>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <div class="control-group">
+                        <label>ブラシサイズ:</label>
+                        <input type="range" id="brushSize" min="5" max="50" value="20">
+                        <span id="brushSizeValue">20</span>
+                    </div>
+
+                    <button class="btn-secondary" id="clearMask">マスククリア</button>
+                    <button class="btn-secondary" id="resetImage">画像リセット</button>
+                </div>
+
+                <div class="controls" style="margin-top: 10px;">
+                    <div class="control-group">
+                        <label>手法:</label>
+                        <select class="method-select" id="methodSelect">
+                            <optgroup label="従来手法">
+                                <option value="texture_aware">テクスチャ対応 (PatchMatch)</option>
+                                <option value="opencv_ns">OpenCV Navier-Stokes</option>
+                                <option value="opencv_telea">OpenCV Telea</option>
+                            </optgroup>
+                            <optgroup label="🤖 AIモデル（ローカル）">
+                                <option value="lama">LaMa</option>
+                                <option value="sd">Stable Diffusion</option>
+                            </optgroup>
+                            <optgroup label="☁️ クラウドAPI（容量0）">
+                                <option value="clipdrop">ClipDrop (推奨)</option>
+                                <option value="replicate">Replicate LaMa</option>
+                            </optgroup>
+                        </select>
+                    </div>
+
+                    <button class="btn-primary" id="executeBtn">✨ 実行</button>
+                    <button class="btn-primary" id="compareBtn">📊 全手法比較</button>
+                    <button class="btn-secondary" id="settingsBtn">⚙️ API設定</button>
+                </div>
+
+                <!-- API設定パネル -->
+                <div id="apiSettings" style="display: none; margin-top: 15px; padding: 15px; background: #f8f9ff; border-radius: 8px;">
+                    <h3 style="margin-bottom: 10px; font-size: 1rem;">☁️ クラウドAPI設定</h3>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px; font-size: 0.9rem;">ClipDrop API Key:</label>
+                        <input type="password" id="clipdropKey" placeholder="APIキーを入力" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <a href="https://clipdrop.co/apis" target="_blank" style="font-size: 0.8rem; color: #667eea;">取得はこちら（無料枠: 月100回）</a>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Replicate API Token:</label>
+                        <input type="password" id="replicateKey" placeholder="APIトークンを入力" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <a href="https://replicate.com/" target="_blank" style="font-size: 0.8rem; color: #667eea;">取得はこちら</a>
+                    </div>
+                    <button class="btn-primary" id="saveApiKeys">💾 保存</button>
+                    <span id="apiStatus" style="margin-left: 10px; font-size: 0.9rem;"></span>
+                </div>
+            </div>
+
+            <!-- 右側: 結果 -->
+            <div class="card">
+                <h2>🖼️ 結果</h2>
+
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>処理中...</p>
+                </div>
+
+                <div id="singleResult" style="display: none;">
+                    <img id="resultImage" style="max-width: 100%; border-radius: 8px;">
+                </div>
+
+                <div class="results-grid" id="compareResults" style="display: none;">
+                    <div class="result-item">
+                        <img id="result_opencv_ns">
+                        <h3>OpenCV NS</h3>
+                        <p style="font-size: 0.8rem; color: #888;">拡散ベース</p>
+                    </div>
+                    <div class="result-item">
+                        <img id="result_opencv_telea">
+                        <h3>OpenCV Telea</h3>
+                        <p style="font-size: 0.8rem; color: #888;">Fast Marching</p>
+                    </div>
+                    <div class="result-item">
+                        <img id="result_texture_aware">
+                        <h3>テクスチャ対応</h3>
+                        <p style="font-size: 0.8rem; color: #888;">PatchMatch</p>
+                    </div>
+                </div>
+
+                <div id="placeholder" style="text-align: center; padding: 100px 20px; color: #888;">
+                    <p style="font-size: 4rem; margin-bottom: 10px;">🎯</p>
+                    <p>左側で画像を読み込み、<br>消したい部分をマスクしてください</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM要素
+        const canvasContainer = document.getElementById('canvasContainer');
+        const dropzone = document.getElementById('dropzone');
+        const canvasWrapper = document.getElementById('canvasWrapper');
+        const imageCanvas = document.getElementById('imageCanvas');
+        const maskCanvas = document.getElementById('maskCanvas');
+        const imageCtx = imageCanvas.getContext('2d');
+        const maskCtx = maskCanvas.getContext('2d');
+        const fileInput = document.getElementById('fileInput');
+        const brushSizeInput = document.getElementById('brushSize');
+        const brushSizeValue = document.getElementById('brushSizeValue');
+
+        let currentImage = null;
+        let isDrawing = false;
+        let brushSize = 20;
+
+        // ブラシサイズ変更
+        brushSizeInput.addEventListener('input', (e) => {
+            brushSize = parseInt(e.target.value);
+            brushSizeValue.textContent = brushSize;
+        });
+
+        // ファイル選択
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                loadImage(e.target.files[0]);
+            }
+        });
+
+        // ドラッグ&ドロップ
+        canvasContainer.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+
+        canvasContainer.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+
+        canvasContainer.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            if (e.dataTransfer.files[0]) {
+                loadImage(e.dataTransfer.files[0]);
+            }
+        });
+
+        // 画像読み込み
+        function loadImage(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    // キャンバスサイズを設定
+                    const maxSize = 600;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxSize || height > maxSize) {
+                        const ratio = Math.min(maxSize / width, maxSize / height);
+                        width *= ratio;
+                        height *= ratio;
+                    }
+
+                    imageCanvas.width = maskCanvas.width = width;
+                    imageCanvas.height = maskCanvas.height = height;
+
+                    // 画像を描画
+                    imageCtx.drawImage(img, 0, 0, width, height);
+                    currentImage = imageCanvas.toDataURL('image/png');
+
+                    // マスクをクリア
+                    maskCtx.clearRect(0, 0, width, height);
+
+                    // UIを更新
+                    dropzone.style.display = 'none';
+                    canvasWrapper.classList.add('visible');
+                    canvasContainer.classList.add('has-image');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // マスク描画
+        maskCanvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            draw(e);
+        });
+
+        maskCanvas.addEventListener('mousemove', (e) => {
+            if (isDrawing) draw(e);
+        });
+
+        maskCanvas.addEventListener('mouseup', () => isDrawing = false);
+        maskCanvas.addEventListener('mouseleave', () => isDrawing = false);
+
+        // タッチ対応
+        maskCanvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isDrawing = true;
+            drawTouch(e);
+        });
+
+        maskCanvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isDrawing) drawTouch(e);
+        });
+
+        maskCanvas.addEventListener('touchend', () => isDrawing = false);
+
+        function draw(e) {
+            const rect = maskCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            maskCtx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+            maskCtx.beginPath();
+            maskCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+            maskCtx.fill();
+        }
+
+        function drawTouch(e) {
+            const rect = maskCanvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+
+            maskCtx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+            maskCtx.beginPath();
+            maskCtx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+            maskCtx.fill();
+        }
+
+        // マスククリア
+        document.getElementById('clearMask').addEventListener('click', () => {
+            maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+        });
+
+        // 画像リセット
+        document.getElementById('resetImage').addEventListener('click', () => {
+            currentImage = null;
+            dropzone.style.display = 'block';
+            canvasWrapper.classList.remove('visible');
+            canvasContainer.classList.remove('has-image');
+            document.getElementById('placeholder').style.display = 'block';
+            document.getElementById('singleResult').style.display = 'none';
+            document.getElementById('compareResults').style.display = 'none';
+        });
+
+        // 実行
+        document.getElementById('executeBtn').addEventListener('click', async () => {
+            if (!currentImage) {
+                alert('画像を読み込んでください');
+                return;
+            }
+
+            const method = document.getElementById('methodSelect').value;
+            const maskData = maskCanvas.toDataURL('image/png');
+
+            showLoading(true);
+
+            try {
+                const response = await fetch('/inpaint', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        image: currentImage,
+                        mask: maskData,
+                        method: method
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('resultImage').src = data.result;
+                    document.getElementById('singleResult').style.display = 'block';
+                    document.getElementById('compareResults').style.display = 'none';
+                    document.getElementById('placeholder').style.display = 'none';
+                } else {
+                    alert('エラー: ' + data.error);
+                }
+            } catch (error) {
+                alert('通信エラー: ' + error.message);
+            }
+
+            showLoading(false);
+        });
+
+        // 全手法比較
+        document.getElementById('compareBtn').addEventListener('click', async () => {
+            if (!currentImage) {
+                alert('画像を読み込んでください');
+                return;
+            }
+
+            const maskData = maskCanvas.toDataURL('image/png');
+
+            showLoading(true);
+
+            try {
+                const response = await fetch('/compare', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        image: currentImage,
+                        mask: maskData
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('result_opencv_ns').src = data.results.opencv_ns;
+                    document.getElementById('result_opencv_telea').src = data.results.opencv_telea;
+                    document.getElementById('result_texture_aware').src = data.results.texture_aware;
+
+                    document.getElementById('singleResult').style.display = 'none';
+                    document.getElementById('compareResults').style.display = 'grid';
+                    document.getElementById('placeholder').style.display = 'none';
+                } else {
+                    alert('エラー: ' + data.error);
+                }
+            } catch (error) {
+                alert('通信エラー: ' + error.message);
+            }
+
+            showLoading(false);
+        });
+
+        function showLoading(show) {
+            document.getElementById('loading').classList.toggle('visible', show);
+        }
+
+        // API設定パネルの表示切替
+        document.getElementById('settingsBtn').addEventListener('click', () => {
+            const panel = document.getElementById('apiSettings');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        });
+
+        // APIキー保存
+        document.getElementById('saveApiKeys').addEventListener('click', async () => {
+            const clipdropKey = document.getElementById('clipdropKey').value;
+            const replicateKey = document.getElementById('replicateKey').value;
+
+            try {
+                const response = await fetch('/api-keys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        clipdrop: clipdropKey,
+                        replicate: replicateKey
+                    })
+                });
+
+                const data = await response.json();
+                const status = document.getElementById('apiStatus');
+
+                if (data.success) {
+                    status.textContent = '✅ 保存しました';
+                    status.style.color = 'green';
+                } else {
+                    status.textContent = '❌ ' + data.error;
+                    status.style.color = 'red';
+                }
+
+                setTimeout(() => { status.textContent = ''; }, 3000);
+            } catch (error) {
+                alert('保存エラー: ' + error.message);
+            }
+        });
+
+        // ページ読み込み時にAPIキーを復元
+        (async () => {
+            try {
+                const response = await fetch('/api-keys');
+                const data = await response.json();
+                if (data.clipdrop) document.getElementById('clipdropKey').value = data.clipdrop;
+                if (data.replicate) document.getElementById('replicateKey').value = data.replicate;
+            } catch (e) {}
+        })();
+
+        // デモ実行
+        document.getElementById('demoBtn').addEventListener('click', async () => {
+            showLoading(true);
+
+            try {
+                // デモ画像とマスクを取得
+                const demoResponse = await fetch('/demo');
+                const demoData = await demoResponse.json();
+
+                if (!demoData.success) {
+                    alert('デモデータ生成エラー');
+                    showLoading(false);
+                    return;
+                }
+
+                // キャンバスに画像を読み込み
+                const img = new Image();
+                img.onload = async () => {
+                    // キャンバスサイズを設定
+                    imageCanvas.width = maskCanvas.width = demoData.width;
+                    imageCanvas.height = maskCanvas.height = demoData.height;
+
+                    // 画像を描画
+                    imageCtx.drawImage(img, 0, 0);
+                    currentImage = demoData.image;
+
+                    // マスクを半透明で描画
+                    const maskImg = new Image();
+                    maskImg.onload = async () => {
+                        // マスクを半透明で描画
+                        maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+                        maskCtx.globalAlpha = 0.5;
+                        maskCtx.drawImage(maskImg, 0, 0);
+                        maskCtx.globalAlpha = 1.0;
+
+                        // UIを更新
+                        dropzone.style.display = 'none';
+                        canvasWrapper.classList.add('visible');
+                        canvasContainer.classList.add('has-image');
+
+                        // 選択された手法でInpainting実行
+                        const method = document.getElementById('methodSelect').value;
+
+                        try {
+                            const response = await fetch('/inpaint', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    image: currentImage,
+                                    mask: demoData.mask,  // サーバーから受け取ったマスクを使用
+                                    method: method
+                                })
+                            });
+
+                            const data = await response.json();
+
+                            if (data.success) {
+                                document.getElementById('resultImage').src = data.result;
+                                document.getElementById('singleResult').style.display = 'block';
+                                document.getElementById('compareResults').style.display = 'none';
+                                document.getElementById('placeholder').style.display = 'none';
+                            } else {
+                                alert('エラー: ' + data.error);
+                            }
+                        } catch (error) {
+                            alert('通信エラー: ' + error.message);
+                        }
+
+                        showLoading(false);
+                    };
+                    maskImg.src = demoData.mask;
+                };
+                img.src = demoData.image;
+
+            } catch (error) {
+                alert('エラー: ' + error.message);
+                showLoading(false);
+            }
+        });
+    </script>
+</body>
+</html>
